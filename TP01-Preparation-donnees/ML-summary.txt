@@ -1,0 +1,166 @@
+0-import
+
+import pandas
+import sqlite3
+import numpy
+from lxml import etree
+from sklearn import preprocessing
+---------------------------------------------------------------------------------------------------------------------------
+1-read files
+
+adult1 = pandas.read_csv("datasets/adult1.csv", skipinitialspace=True)
++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+noms = ["class", "age", "sex", "workclass", "education", "hours-per-week", "marital-status"]
+adult2 = pandas.read_csv("datasets/adult2.csv", skipinitialspace=True, sep=";", header=None, names=noms)
++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+con = sqlite3.connect("datasets/adult3.db")
+adult3 = pandas.read_sql_query("SELECT * FROM income", con)
+adult3 = adult3.replace('?', numpy.nan)
++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+parser = etree.XMLParser(dtd_validation=True)
+arbre = etree.parse("datasets/adult4.xml", parser)
+def valeur_noeud(noeud):
+    return noeud.text if noeud is not None else numpy.nan
+noms2 = ["id", "age", "workclass", "education", "marital-status", "sex", "hours-per-week", "class"]
+adult4 = pandas.DataFrame(columns=noms2)
+for candidat in arbre.getroot():
+    idi = candidat.get("id")
+    age = valeur_noeud(candidat.find("age"))
+    workclass = valeur_noeud(candidat.find("workclass"))
+    education = valeur_noeud(candidat.find("education"))
+    marital = valeur_noeud(candidat.find("marital-status"))
+    sex = valeur_noeud(candidat.find("sex"))
+    hours = valeur_noeud(candidat.find("hours-per-week"))
+    klass = valeur_noeud(candidat.find("class"))
+    adult4 = adult4.append(
+        pandas.Series([idi, age, workclass, education, marital, sex, hours, klass],
+        index=noms2), ignore_index=True)
+---------------------------------------------------------------------------------------------------------------------------
+2-show files
+
+adult1.head(3)
+---------------------------------------------------------------------------------------------------------------------------
+3-rename col
+
+adult3.rename(columns={"num": "id", "hours-per-day": "hours-per-week"}, inplace=True)
+list(adult3.columns)
+---------------------------------------------------------------------------------------------------------------------------
+4-col ordre
+
+#col commune
+ordre = ["age", "workclass", "education", "marital-status", "sex", "hours-per-week", "class"]
+adult1 = adult1.reindex(ordre + ["occupation"], axis=1)
+---------------------------------------------------------------------------------------------------------------------------
+5-mult col 
+
+adult3["hours-per-week"] *= 5
+---------------------------------------------------------------------------------------------------------------------------
+6-concat and eliminat duplicated
+
+adult34 = pandas.concat([adult3, adult4], ignore_index=True)
+adult34["id"] = pandas.to_numeric(adult34["id"], downcast="integer")
+adult34 = adult34.sort_values(by="id")
+
+#test duplicated
+red = adult34[adult34.duplicated("id", keep=False)]
+
+adult34 = adult34.groupby("id").ffill()
+adult34.drop_duplicates("id", keep="last", inplace=True)
+---------------------------------------------------------------------------------------------------------------------------
+7-drop col
+
+adult1.drop(["occupation"], axis=1, inplace=True)
+---------------------------------------------------------------------------------------------------------------------------
+8.1-garder col
+
+mask = (corona["recovered"] == "1") | (corona["death"] == "1")
+corona = corona.loc[mask]
+---------------------------------------------------------------------------------------------------------------------------
+8.2-garder col
+
+corona = corona.filter(["country", "age", "recovered"])
+---------------------------------------------------------------------------------------------------------------------------
+
+8.3-rename val dune col
+corona["recovered"] = corona["recovered"].map(lambda x: 0 if x == "0" else 1)
+
+---------------------------------------------------------------------------------------------------------------------------
+
+8.4-garder que les val
+
+msk = corona["country"].isin(["Singapore", "China", "South Korea"])
+corona = corona.loc[msk]
+corona["country"].value_counts()
+
+---------------------------------------------------------------------------------------------------------------------------
+8-rename val dune col
+
+dic = {
+    "Never-married": "single",
+    "Married-civ-spouse": "married",
+    "Married-spouse-absent": "married",
+    "Married-AF-spouse": "married",
+    "Divorced": "divorced",
+    "Separated": "divorced",
+    "Widowed": "widowed"
+}
+adult1["marital-status"] = adult1["marital-status"].map(dic)
+
+---------------------------------------------------------------------------------------------------------------------------
+9-size
+
+adult1.shape
+---------------------------------------------------------------------------------------------------------------------------
+10-fusion
+
+adult = pandas.concat([adult1, adult2, adult34], ignore_index=True)
+---------------------------------------------------------------------------------------------------------------------------
+11-nb nan
+
+adult.isnull().sum()
+---------------------------------------------------------------------------------------------------------------------------
+12-drop nan
+
+adult.dropna(subset=["workclass", "education", "marital-status", "sex", "hours-per-week", "class"], inplace=True)
+---------------------------------------------------------------------------------------------------------------------------
+13-cas particulier exemple "age"
+
+adult["age"] = pandas.to_numeric(adult["age"])
+adult["age"] = adult.groupby(["class", "education"])["age"].transform(lambda x: x.fillna(int(round(x.mean()))))
+
+---------------------------------------------------------------------------------------------------------------------------
+14-encodage
+
+from sklearn import preprocessing
+ord_enc = preprocessing.OrdinalEncoder()
+education_enc = ord_enc.fit_transform(adult[["education"]])
+education_enc[:6,]
++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+onehot_enc = preprocessing.OneHotEncoder()
+sex_enc = onehot_enc.fit_transform(adult[["sex"]])
+sex_enc.toarray()[:6,]
+---------------------------------------------------------------------------------------------------------------------------
+15-Normalisation
+
+adult["hours-per-week"] = pandas.to_numeric(adult["hours-per-week"])
++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+min_max_scaler = preprocessing.MinMaxScaler()
+hours_per_week_prop = min_max_scaler.fit_transform(adult[["hours-per-week"]])
+hours_per_week_prop[:3,]
+#ajouter nouvelle col
+adult["hours-per-week-prop"] = hours_per_week_prop
++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+std_scaler = preprocessing.StandardScaler()
+age_normal = min_max_scaler.fit_transform(adult[["age"]])
+age_normal[:3,]
++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+binarizer = preprocessing.Binarizer(threshold=40)
+age_bin = binarizer.fit_transform(adult[["age"]])
+age_bin[:10,]
+---------------------------------------------------------------------------------------------------------------------------
